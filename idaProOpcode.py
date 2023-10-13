@@ -10,12 +10,12 @@ import pandas as pd
 
 from tqdm import tqdm
 
-DEFAULT_INPUT_PATH = r"C:\Users\bolin\malware\80"
-DEFAULT_REPORT_PATH = r"C:\Users\bolin\malware\80_report"
-DEFAULT_OUTPUT_FOLDER = r"C:\Users\bolin\malware\output"
-DEFAULT_SCRIPT_PATH = r"C:\Users\bolin\malware\idaScript.py"
-DEFAULT_IDAT_PATH = r"C:\Users\bolin\Downloads\IDA Pro 7.7.220118 (Windows) (x86,x64,ARM64)\idat.exe"
-DEFAULT_IDAT64_PATH = r"C:\Users\bolin\Downloads\IDA Pro 7.7.220118 (Windows) (x86,x64,ARM64)\idat64.exe"
+DEFAULT_INPUT_PATH = r""
+DEFAULT_REPORT_PATH = r""
+DEFAULT_OUTPUT_FOLDER = r""
+DEFAULT_SCRIPT_PATH = r""
+DEFAULT_IDAT_PATH = r""
+DEFAULT_IDAT64_PATH = r""
 
 # %%
 class idaPro(object):
@@ -159,22 +159,15 @@ class idaPro(object):
     def idaPro_disassemble(self):
         start_time = time.time()  # Record the start time
 
-        # # Number of processes to use
-        # num_processes = 4
+        # Get the number of CPU cores, which can be adjusted as needed
+        num_processes = multiprocessing.cpu_count()
 
-        # # Create a multiprocessing pool
-        # pool = multiprocessing.Pool(processes=num_processes)
+        # Create a process pool
+        with multiprocessing.Pool(processes=num_processes) as pool:
+            data_list = [row for _, row in self.df.iterrows()]
 
-        # # Convert DataFrame to a list of tuples
-        # data_list = list(self.df.itertuples(index=False))
-
-        # # Use the pool to map the runIdat function to the DataFrame
-        # pool.map(self.runIdat, data_list)
-
-        # pool.close()
-        # pool.join()
-        for index, row in tqdm(self.df.iterrows(), total=len(self.df), desc="Disassembling"):
-            self.runIdat(row)
+            # Use the pool's map method to process data in parallel
+            result_iterator = list(tqdm(pool.imap(self.runIdat, data_list), total=len(data_list)))
 
         end_time = time.time()  # Record the end time
         execution_time = end_time - start_time  # Calculate the execution time
@@ -194,6 +187,7 @@ class idaPro(object):
                     os.remove(os.path.join(root, file))
 
 # %%
-idaPro().run()
+if __name__ == "__main__":
+    idaPro().run()
 
 
