@@ -34,6 +34,7 @@ class idaPro(object):
     def run(self):
         if 'ipykernel' not in sys.modules:
             self.parameter_parser()
+        self.mkdir()
         self.get_all_files_in_directory()
         self.idaPro_disassemble()
         self.clear_folder()
@@ -91,6 +92,22 @@ class idaPro(object):
         self.idat = args.idat_path
         self.idat64 = args.idat64_path
 
+    def mkdir(self):
+        '''
+        Recursively create the output folders to match the structure of self.datasetPath.
+        '''
+        os.makedirs(self.outputFolder)
+        self._create_folders_recursive(self.datasetPath, self.outputFolder)
+
+    def _create_folders_recursive(self, source, destination):
+        for item in os.listdir(source):
+            source_path = os.path.join(source, item)
+            dest_path = os.path.join(destination, item)
+
+            if os.path.isdir(source_path):
+                os.makedirs(dest_path, exist_ok=True)
+                self._create_folders_recursive(source_path, dest_path)
+
     def get_all_files_in_directory(self):
         '''
         Get all files in the folder and its subfolders, and save them in self.df[filePath]
@@ -108,29 +125,50 @@ class idaPro(object):
                 # Check if the file has an extension (not empty)
                 if file_extension:
                     continue  # Skip files with extensions
-                file_path = os.path.join(root, file)
-                filePaths.append(file_path)
+
+                relative_path = os.path.relpath(os.path.join(root, file), self.datasetPath)
+                filePaths.append(relative_path)
                 try:
-                    with open(os.path.join(self.reportPath, root[-2:], file + ".json"), encoding="utf-8") as f:
-                        data = json.load(f)
-                        architectures.append(data["additional_info"]["exiftool"]["CPUArchitecture"])
-                        cpuTypes.append(data["additional_info"]["exiftool"]["CPUType"])
-                except:
+                    reportPath = os.path.join(self.reportPath, file[:2], file + ".json")
+                    with open(reportPath, encoding="utf-8") as f:
+                        try:
+                            data = json.load(f)
+                            architectures.append(data["additional_info"]["exiftool"]["CPUArchitecture"])
+                            cpuTypes.append(data["additional_info"]["exiftool"]["CPUType"])
+                        except Exception as e:
+                            architectures.append("Error")
+                            cpuTypes.append("Error")
+                            with open('noArchitecture.log', 'a') as log_file:
+                                log_file.write(f"No architecture: {reportPath}\n")
+                except Exception as e:
                     architectures.append("Error")
                     cpuTypes.append("Error")
+                    self.log_error(reportPath, f"An error occurred: {str(e)}")
         self.df['filePath'] = filePaths
         self.df['architecture'] = architectures
         self.df['cpuType'] = cpuTypes
 
     def runIdat(self, row):
         try:
-            fileName = os.path.basename(row['filePath'])
+            fileName = row['filePath']
             command = []
 
             if row['architecture'] == "32 bit":
-                command = [self.idat, '-c', '-A', f'-S{self.scriptPath} {os.path.join(self.outputFolder, fileName + ".txt")}', row['filePath']]
+                command = [
+                            self.idat,
+                            '-c', 
+                            '-A', 
+                            f'-S{self.scriptPath} {os.path.join(self.outputFolder, fileName + ".txt")}',
+                            os.path.join(self.datasetPath, row['filePath'])
+                          ]
             elif row['architecture'] == "64 bit":
-                command = [self.idat64, '-c', '-A', f'-S{self.scriptPath} {os.path.join(self.outputFolder, fileName + ".txt")}', row['filePath']]
+                command = [ 
+                            self.idat64,
+                            '-c',
+                            '-A', 
+                            f'-S{self.scriptPath} {os.path.join(self.outputFolder, fileName + ".txt")}', 
+                            os.path.join(self.datasetPath, row['filePath'])
+                          ]
 
             if command:
                 # Run the IDAT command and capture the output
@@ -144,10 +182,6 @@ class idaPro(object):
                 else:
                     # IDAT command encountered an error
                     self.log_error(row['filePath'], f"IDAT command failed with error: {stderr}")
-            else:
-                with open('noArchitecture.log', 'a') as log_file:
-                    log_file.write(f"No architecture: {row['filePath']}\n")
-
         except Exception as e:
             self.log_error(row['filePath'], f"An error occurred: {str(e)}")
 
